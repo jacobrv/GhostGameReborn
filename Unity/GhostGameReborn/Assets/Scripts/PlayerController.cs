@@ -2,8 +2,10 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Unity.Netcode;
+using Unity.Collections;
 
-public class PlayerController : MonoBehaviour
+public class PlayerController : NetworkBehaviour
 {
 
     // Components
@@ -16,13 +18,29 @@ public class PlayerController : MonoBehaviour
     float inputVertical;
 
     public List<FollowController> followingDots;
-    public string team;
+
+    public NetworkVariable<int> team = new NetworkVariable<int>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    public NetworkVariable<ulong> playerId = new NetworkVariable<ulong>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
 
     // Start is called before the first frame update
     void Start()
     {
+        
+    }
+
+    public override void OnNetworkSpawn() {
+        base.OnNetworkSpawn();
+
         rb = gameObject.GetComponent<Rigidbody2D>();
-        followingDots = new List<FollowController>();
+        followingDots = new List<FollowController>();     
+
+        if(IsOwner){
+            playerId.Value = OwnerClientId;
+            team.Value = (int)OwnerClientId % 2;
+            CameraController cc = GameObject.FindGameObjectWithTag("MainCamera").GetComponent<CameraController>();
+            cc.followTarget = rb;
+            Debug.Log("Found the camera!!!!!!");
+        }
     }
 
     // Update is called once per frame
@@ -34,6 +52,8 @@ public class PlayerController : MonoBehaviour
 
     void FixedUpdate()
     {
+        if(!IsOwner) return;
+
         if(inputHorizontal != 0 || inputVertical != 0) {
             if(inputHorizontal != 0 && inputVertical != 0) {
                 rb.velocity = new Vector2(inputHorizontal * walkSpeed * speedLimiter, inputVertical * walkSpeed * speedLimiter);
@@ -55,15 +75,8 @@ public class PlayerController : MonoBehaviour
 
         if(contact.gameObject.TryGetComponent(out FollowController fc)) {
             Debug.Log("Follow Controller Found.");
-            if(fc && !followingDots.Contains(fc)) {
-                if(followingDots.Count == 0) {
-                    fc.wayPoint = rb;
-                    fc.followDistance = 1.5f;
-                }
-                else {
-                    fc.wayPoint = followingDots[followingDots.Count-1].rb;
-                    fc.followDistance = 0.7f;
-                }
+            if(fc && !followingDots.Contains(fc) && fc.wayPoint == null) {
+                fc.SetFollowTargetServerRpc(playerId.Value);
                 followingDots.Add(fc);
             }
         }
@@ -73,14 +86,29 @@ public class PlayerController : MonoBehaviour
             Debug.Log("Goal Controller Found.");
             if(gc) {
                 
-                if(gc.team == team) {
-                    followingDots.ForEach((dot)=>{
-                        Destroy(dot.rb.gameObject);
-                    });
-                    followingDots.Clear();
+                if(gc.team == team.Value) {
+                    DepositDotsServerRpc(OwnerClientId);
                 }
             }
         }
 
+    }
+
+     [ServerRpc]
+    public void DepositDotsServerRpc(ulong playerId) {
+        FollowController[] fcs = FindObjectsOfType<FollowController>();
+        for(int i = 0; i<fcs.Length; i++) {
+            if(fcs[i].ownerPlayerId.Value == playerId) {
+                Destroy(fcs[i].gameObject);
+                Debug.Log("Destroying Dot with Owner: "+playerId);
+            }
+        }
+
+        PlayerController[] pcs = FindObjectsOfType<PlayerController>();
+        for(int i = 0; i<pcs.Length; i++) {
+            if(pcs[i].OwnerClientId == playerId) {
+                pcs[i].followingDots.Clear();
+            }
+        }
     }
 }

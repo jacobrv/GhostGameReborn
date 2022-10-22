@@ -5,7 +5,7 @@ using UnityEngine;
 public class GoalController : MonoBehaviour
 {
 
-    public string team;
+    public int team;
 
     // Start is called before the first frame update
     void Start()

@@ -20,6 +20,9 @@ public class CameraController : MonoBehaviour
     }
 
     void FixedUpdate() {
-        this.transform.position = new Vector3(followTarget.transform.position.x, followTarget.transform.position.y, -10);
+        if(followTarget)
+        {
+            this.transform.position = new Vector3(followTarget.transform.position.x, followTarget.transform.position.y, -10);
+        }
     }
 }
